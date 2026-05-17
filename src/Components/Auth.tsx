@@ -12,7 +12,10 @@ export default function Auth() {
     e.preventDefault()
     setLoading(true)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) alert("Error al entrar: " + error.message)
+    if (error) {
+      // Aquí podrías usar una notificación tipo toast
+      console.error("Error login:", error.message)
+    }
     setLoading(false)
   }
 
@@ -31,13 +34,13 @@ export default function Auth() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-blue-50 p-4">
-      <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-600">
+      <div className="bg-white p-8 rounded-[2rem] shadow-2xl w-full max-w-md border-t-8 border-blue-600">
         <div className="text-center mb-8">
           <h2 className="text-4xl font-black text-blue-800 italic tracking-tighter">FANTASY TFG ⚽</h2>
           <p className="text-gray-500 font-medium">Gestiona tu equipo de estrellas</p>
         </div>
 
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleLogin}>
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
             <input
@@ -62,7 +65,7 @@ export default function Auth() {
 
           <div className="flex flex-col gap-3 pt-4">
             <button
-              onClick={handleLogin}
+              type="submit"
               disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold shadow-lg transition-transform active:scale-95"
             >
@@ -70,6 +73,7 @@ export default function Auth() {
             </button>
             
             <button
+              type="button"
               onClick={handleSignUp}
               disabled={loading}
               className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 p-4 rounded-xl font-bold transition-all"
