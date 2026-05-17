@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import Auth from '@/Components/Auth';
@@ -8,7 +8,7 @@ import { Stats, Jugador, League, Rival, PartidoHistorial, Posicion, FormacionKey
 import { CONFIG_FORMACIONES, EQUIPOS_BOTS_INICIAL, CALENDARIO } from './gameData';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ShieldCheck, Calendar, RotateCcw, Zap, Target, Activity, Award, TrendingUp, Users, Newspaper, Plus, LogIn, Share2, Copy, Crown, ChevronLeft, ChevronRight,
+  ShieldCheck, Calendar, RotateCcw, Zap, Target, Activity, Award, TrendingUp, Users, Newspaper, Plus, LogIn, Eye, EyeOff, Share2, Copy, Crown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 // Función para asegurar que solo exista un jugador por nombre en toda la liga
@@ -23,9 +23,15 @@ const deduplicarPorNombre = (jugadores: Jugador[]): Jugador[] => {
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [jugadores, setJugadores] = useState<Jugador[]>([]);
-  const [presupuesto, setPresupuesto] = useState(150000000); // 150M Iniciales
+  // Estados para controlar si el usuario ya tiene una liga creada en la base de datos
+ const [usuarioTieneLiga, setUsuarioTieneLiga] = useState(false);
+ const [comprobandoLiga, setComprobandoLiga] = useState(true);
+const [ligasDetectadas, setLigasDetectadas] = useState<any[]>([]); // 👈 Guarda todas tus ligas en una lista
+const [user, setUser] = useState<User | null>(null);
+const [showPassword, setShowPassword] = useState(false);
+const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [presupuesto, setPresupuesto] = useState(100000000); // Volvemos a los 100M iniciales
+  const [userLeagues, setUserLeagues] = useState<League[]>([]);
   const [userKitHomeColor, setUserKitHomeColor] = useState('#2563eb'); // Azul por defecto
   const [userKitAwayColor, setUserKitAwayColor] = useState('#ffffff'); // Blanco por defecto
   const [misFichajes, setMisFichajes] = useState<Jugador[]>([]);
@@ -60,6 +66,8 @@ export default function App() {
   const [newLeagueName, setNewLeagueName] = useState('');
   const [joinLeagueCode, setJoinLeagueCode] = useState('');
 
+  const cargandoDatosRef = useRef(false);
+
   const generarStatsRealistas = (posicion: string, precio: number): Stats => {
     // Ajustamos la escala para que los jugadores de ~70M sean los tops (factor ~1.0)
     const factorCalidad = Math.min(1.3, Math.max(0.2, precio / 70000000)); 
@@ -89,7 +97,23 @@ export default function App() {
       default: return Math.round((stats.ritmo + stats.tiro + stats.pase + stats.defensa) / 4);
     }
   };
+  const borrarLigaDesdeElJuego = async (ligaId: string) => {
+  // Al ejecutar este DELETE en 'leagues', Supabase borrará de forma automática
+  // los presupuestos en 'mis_plantillas' y los futbolistas comprados en 'jugadores_comprados'.
+  const { error } = await supabase
+    .from('leagues')
+    .delete()
+    .eq('id', ligaId);
 
+  if (error) {
+    console.error("Error al eliminar la liga:", error.message);
+    alert("No se pudo eliminar la liga del sistema.");
+  } else {
+    alert("¡Liga eliminada por completo y datos limpiados con éxito!");
+    // Aquí puedes refrescar la página o actualizar tu estado local:
+    // router.refresh() o cargarLigas()
+  }
+};
   const obtenerStatsArea = (plantilla: Jugador[]) => {
     const avg = (players: Jugador[]) => players.length > 0 
       ? Math.round(players.reduce((acc, j) => acc + j.media, 0) / players.length) 
@@ -183,8 +207,7 @@ export default function App() {
       // Filtramos para no coger jugadores de otros humanos y ordenamos por media
       const idsOcupadosOtros = new Set(fichajesDeLaLiga.filter(f => f.user_id !== user.id).map(s => s.jugador_id));
       
-      const poolCandidatos = jugadores
-        .filter(j => !idsOcupadosOtros.has(j.id) && j.media <= 80);
+      const poolCandidatos = jugadores.filter(j => !idsOcupadosOtros.has(j.id));
         // Quitamos la restricción del 70% para que el equipo inicial sea de máxima calidad
 
       const draft: Jugador[] = [];
@@ -210,7 +233,7 @@ export default function App() {
       setJugadoresBloqueadosJornada([]);
       setPuntosLigaUsuario(0);
       setCapitanId(null); 
-      setPresupuesto(150000000); // Volver al presupuesto inicial de 150 millones
+      setPresupuesto(100000000); // Volver al presupuesto inicial de 100 millones
       setMisFichajes(draft);
       setJugadores(prev => prev.map(j => ({ 
         ...j, 
@@ -259,8 +282,113 @@ export default function App() {
   const toggleTransferible = (jugadorId: string) => {
     setMisFichajes(prev => prev.map(j => j.id === jugadorId ? { ...j, enVenta: !j.enVenta } : j));
     setJugadorSeleccionado(prev => prev && prev.id === jugadorId ? { ...prev, enVenta: !prev.enVenta } : prev);
-  };
+  };// 1. RECUADRO DE GUARDADO AUTOMÁTICO (Tu lógica original recuperada)
+  useEffect(() => {
+    if (currentLeagueId && estadoLigaBots.length > 0) {
+      const progress = {
+        jornadaActual,
+        puntosLigaUsuario,
+        estadoLigaBots,
+        historialPartidos,
+        misFichajes,
+        presupuesto,
+        diasHastaPartido,
+        jugadoresBloqueadosJornada
+      };
+      try {
+        localStorage.setItem(`progress_${currentLeagueId}`, JSON.stringify(progress));
+      } catch (error) {
+        console.error("Error guardando el progreso:", error);
+      }
+    }
+  }, [jornadaActual, puntosLigaUsuario, estadoLigaBots, historialPartidos, misFichajes, presupuesto, currentLeagueId, diasHastaPartido, jugadoresBloqueadosJornada]);
 
+  // 2. DETECTOR AUTOMÁTICO DE LIGAS (El que comprueba Supabase al iniciar sesión)
+  // 2. DETECTOR AUTOMÁTICO DE LIGAS (El que comprueba Supabase al iniciar sesión)
+ // 2. DETECTOR AUTOMÁTICO DE LIGAS (Se ejecuta al iniciar sesión)
+  useEffect(() => {
+    const verificarLigasExistentes = async () => {
+      if (!user) return;
+
+      setComprobandoLiga(true);
+      try {
+        const { data: registros, error } = await supabase
+          .from('leagues')
+          .select('id, name') // 👈 Nos traemos el ID y el Nombre de cada liga
+          .eq('owner_id', user.id); // 👈 Trae todas las que pertenezcan a tu usuario
+
+        if (!error && registros && registros.length > 0) {
+          setUsuarioTieneLiga(true);
+          setLigasDetectadas(registros); // 👈 Guardamos la lista completa aquí
+        } else {
+          setUsuarioTieneLiga(false);
+          setLigasDetectadas([]);
+        }
+      } catch (error) {
+        console.error("Error al comprobar las ligas en Supabase:", error);
+      } finally {
+        setComprobandoLiga(false);
+      }
+    };
+
+    verificarLigasExistentes();
+  }, [user]);
+  useEffect(() => {
+    const cargarDatosDeLaLiga = async () => {
+      if (!currentLeagueId || !user) return;
+
+      try {
+        // 1. Buscamos la plantilla y datos del usuario en esta liga
+        const { data: plantilla, error: errPlantilla } = await supabase
+          .from('mis_plantillas')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('liga_id', currentLeagueId)
+          .maybeSingle();
+
+        if (plantilla) {
+          // Guardamos los datos reales descargados en tus variables del juego
+          if (plantilla.presupuesto !== undefined) setPresupuesto(plantilla.presupuesto);
+          if (plantilla.puntos !== undefined) setPuntosLigaUsuario(plantilla.puntos);
+          if (plantilla.jornada_actual !== undefined) setJornadaActual(plantilla.jornada_actual);
+          
+          console.log("¡Partida cargada con éxito para la liga:", currentLeagueId);
+        }
+      } catch (error) {
+        console.error("Error crítico al cargar los detalles de la liga:", error);
+      }
+    };
+
+    cargarDatosDeLaLiga();
+  }, [currentLeagueId, user]);
+   // 👈 ¡ESTA ES LA CLAVE! Ahora se volverá a ejecutar en cuanto inicies sesión
+// Cargar progreso automáticamente al cambiar de liga
+  useEffect(() => {
+    if (!currentLeagueId) return;
+
+    const saved = localStorage.getItem(`progress_${currentLeagueId}`);
+    
+    if (saved) {
+      const progress = JSON.parse(saved);
+      setJornadaActual(progress.jornadaActual || 1);
+      setPuntosLigaUsuario(progress.puntosLigaUsuario || 0);
+      setEstadoLigaBots(progress.estadoLigaBots || []);
+      setHistorialPartidos(progress.historialPartidos || []);
+      setMisFichajes(progress.misFichajes || []);
+      setPresupuesto(progress.presupuesto || 100000000);
+      setDiasHastaPartido(progress.diasHastaPartido ?? 3);
+      setJugadoresBloqueadosJornada(progress.jugadoresBloqueadosJornada || []);
+    } else {
+      // Si entras a una liga NUEVA, limpiamos los datos viejos de la pantalla
+      setJornadaActual(1);
+      setPuntosLigaUsuario(0);
+      setMisFichajes([]);
+      setPresupuesto(100000000);
+      setDiasHastaPartido(3);
+      setJugadoresBloqueadosJornada([]);
+    }
+  }, [currentLeagueId]);
+  // Guardar progreso automáticamente cuando cambie algo relevante
   // Guardar progreso automáticamente cuando cambie algo relevante
   useEffect(() => {
     if (currentLeagueId && estadoLigaBots.length > 0) {
@@ -269,16 +397,20 @@ export default function App() {
         puntosLigaUsuario,
         estadoLigaBots,
         historialPartidos,
-        jugadores,
         misFichajes,
-        noticias,
         presupuesto,
         diasHastaPartido,
         jugadoresBloqueadosJornada
+        // ⚠️ QUITADOS 'jugadores' Y 'noticias' PARA EVITAR EL PANTALLAZO ROJO (QuotaExceededError)
       };
-      localStorage.setItem(`progress_${currentLeagueId}`, JSON.stringify(progress));
+      
+      try {
+        localStorage.setItem(`progress_${currentLeagueId}`, JSON.stringify(progress));
+      } catch (error) {
+        console.error("Error guardando el progreso:", error);
+      }
     }
-  }, [jornadaActual, puntosLigaUsuario, estadoLigaBots, historialPartidos, jugadores, misFichajes, noticias, presupuesto, currentLeagueId, diasHastaPartido, jugadoresBloqueadosJornada]);
+  }, [jornadaActual, puntosLigaUsuario, estadoLigaBots, historialPartidos, misFichajes, presupuesto, currentLeagueId, diasHastaPartido, jugadoresBloqueadosJornada]);
 
   // Función auxiliar para simular un partido entre dos equipos cualesquiera
   const simularPartidoGenerico = (
@@ -831,10 +963,11 @@ export default function App() {
 
   const cargarDatos = useCallback(
     async (leagueId: string, leagueFromCaller?: League) => {
-      if (!user?.id || !leagueId) {
+      if (!user?.id || !leagueId || (cargandoDatosRef.current && !leagueFromCaller)) {
         setCargando(false);
         return;
       }
+      cargandoDatosRef.current = true;
       try {
         setCargando(true);
 
@@ -861,6 +994,13 @@ export default function App() {
         const resJugadores = results[0];
         const resPlantilla = results[1];
         const resLeague = leagueFromCaller ? null : results[2];
+
+        // Si hay error en la consulta de plantilla, no podemos garantizar un draft único
+        if (resPlantilla.error) {
+          console.error("Error al verificar disponibilidad de jugadores:", resPlantilla.error);
+          setCargando(false);
+          return;
+        }
 
         const allJugadores = resJugadores.data || [];
         const plantillaData = resPlantilla.data || [];
@@ -921,42 +1061,34 @@ export default function App() {
 
         const savedProgress = localStorage.getItem(`progress_${leagueId}`);
 
-        // Draft inicial: Si el usuario no tiene jugadores y no hay progreso guardado, le asignamos 11 iniciales
+        // Draft inicial automático: Si el usuario no tiene jugadores y no hay progreso guardado
         if (misJugadoresYaFichados.length === 0 && !savedProgress) {
-          const idsOcupados = new Set(allSignings.map(s => s.jugador_id));
-          // Buscamos jugadores libres con media <= 80
-          let poolDraft = jugadoresConBase.filter(j => !idsOcupados.has(j.id) && j.media <= 80);
-          
+          const idsOcupados = new Set(allSignings.map((s: any) => s.jugador_id));
+          const poolDraft = jugadoresConBase.filter(j => !idsOcupados.has(j.id));
           const draft: Jugador[] = [];
           const slots: Record<string, number> = { POR: 1, DF: 4, MC: 4, DL: 2 };
 
           for (const [pos, cant] of Object.entries(slots)) {
             const disponibles = poolDraft.filter(j => j.posicion === pos);
-            const elegidos = disponibles.sort(() => 0.5 - Math.random()).slice(0, cant);
+            const elegidos = [...disponibles].sort(() => 0.5 - Math.random()).slice(0, cant);
             draft.push(...elegidos.map(j => ({ 
               ...j, 
               es_titular: true, 
-              is_injured: false, 
-              dias_lesion: 0,
-              clausula: Math.round(j.precio * 1.5) // Forzamos el ratio en el draft
+              puntos: 0, 
+              clausula: Math.round(j.precio * 1.5) 
             })));
           }
-
-          console.log("Draft generado:", draft.length, "jugadores");
 
           if (draft.length === 11) {
             const insertData = draft.map(j => ({ user_id: user.id, jugador_id: j.id, liga_id: leagueId, es_titular: true }));
             const { error: draftErr } = await supabase.from('mis_plantillas').insert(insertData);
+            
             if (!draftErr) {
               misJugadoresYaFichados = draft;
-              allSignings = [...allSignings, ...insertData];
-              setFichajesDeLaLiga(allSignings);
+              const { data: finalSignings } = await supabase.from('mis_plantillas').select('jugador_id, user_id').eq('liga_id', leagueId);
+              if (finalSignings) setFichajesDeLaLiga(finalSignings);
               agregarNoticia("SISTEMA: ¡Draft completado! Se te han asignado 11 jugadores iniciales.");
-            } else {
-              console.error("Error en draft inicial:", draftErr);
             }
-          } else {
-            console.error("No se pudo completar el draft. Pool insuficiente.");
           }
         }
 
@@ -966,7 +1098,7 @@ export default function App() {
           setPuntosLigaUsuario(progress.puntosLigaUsuario || 0);
           setEstadoLigaBots(progress.estadoLigaBots || []);
           setHistorialPartidos(progress.historialPartidos || []);
-          setPresupuesto(progress.presupuesto ?? 150000000);
+          setPresupuesto(progress.presupuesto ?? 100000000);
           setDiasHastaPartido(progress.diasHastaPartido ?? 7);
           setNoticias(progress.noticias || []);
           setJugadoresBloqueadosJornada(progress.jugadoresBloqueadosJornada || []);
@@ -1016,12 +1148,13 @@ export default function App() {
           setPuntosLigaUsuario(0); // Reiniciar puntos de liga
           setHistorialPartidos([]);
           setNoticias(["¡Bienvenidos a la nueva temporada de la Liga Fantasy!"]);
-          const gastoTotal = misJugadoresYaFichados.reduce((acc: number, j: Jugador) => acc + (Number(j.precio) || 0), 0); 
-          setPresupuesto(150000000 - gastoTotal);
+          // Forzamos presupuesto inicial a 100M para evitar saldos negativos por errores de carga
+          setPresupuesto(100000000); 
         }
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
+        cargandoDatosRef.current = false;
         setCargando(false);
       }
     },
@@ -1042,29 +1175,48 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Intentar recuperar la liga del localStorage cuando el usuario se loguea
+  // 2. Lógica de recuperación de ligas del usuario
   useEffect(() => {
-    if (user && !currentLeagueId && !showLeagueSelectionModal) {
-      // Comprobamos si viene de un enlace de invitación (?join=XXXXXX)
-      const params = new URLSearchParams(window.location.search);
-      const codeFromUrl = params.get('join');
-
-      if (codeFromUrl && codeFromUrl !== "undefined") {
-        setJoinLeagueCode(codeFromUrl.toUpperCase());
-        setShowLeagueSelectionModal(true);
-        setCargando(false);
-        // Limpiamos la URL para que no intente unirse de nuevo al recargar
-        window.history.replaceState({}, '', window.location.pathname);
-      } else {
+    const recuperarLiga = async () => {
+      if (user && !currentLeagueId && !showLeagueSelectionModal) {
+        setCargando(true);
+        const params = new URLSearchParams(window.location.search);
+        const codeFromUrl = params.get('join');
         const storedLeagueId = localStorage.getItem('currentLeagueId');
+
+        // Buscamos todas las ligas donde el usuario ya tiene equipo
+        const { data: userSignings } = await supabase
+          .from('mis_plantillas')
+          .select('liga_id')
+          .eq('user_id', user.id);
+
+        if (userSignings && userSignings.length > 0) {
+          const ids = Array.from(new Set(userSignings.map(s => s.liga_id)));
+          const { data: leaguesData } = await supabase
+            .from('leagues')
+            .select('*')
+            .in('id', ids);
+          if (leaguesData) setUserLeagues(leaguesData as League[]);
+        }
+
+        // Si viene de un enlace de invitación, preparamos el código
+        if (codeFromUrl && codeFromUrl !== "undefined") {
+          setJoinLeagueCode(codeFromUrl.toUpperCase());
+        }
+
+        // Si hay una sesión guardada en LocalStorage, entramos directamente para agilizar
         if (storedLeagueId && storedLeagueId !== "undefined") {
           setCurrentLeagueId(storedLeagueId);
-        } else {
-          setShowLeagueSelectionModal(true);
           setCargando(false);
+          return;
         }
+
+        setShowLeagueSelectionModal(true);
+        setCargando(false);
       }
-    }
+    };
+
+    recuperarLiga();
   }, [user, currentLeagueId, showLeagueSelectionModal]);
 
   // 3. Cargar datos de la base de datos cuando tenemos usuario Y liga
@@ -1089,67 +1241,103 @@ export default function App() {
     setUser(null);
     setCurrentLeagueId(null);
     setCurrentLeague(null);
+    setUserLeagues([]);
+    setMisFichajes([]);
     localStorage.removeItem('currentLeagueId');
   };
 
-  const handleCreateLeague = async () => {
-    if (!user?.id || !newLeagueName.trim()) {
-      alert('Por favor, introduce un nombre para la liga.');
+ const handleCreateLeague = async () => {
+  if (!user?.id || !newLeagueName.trim()) {
+    alert('Por favor, introduce un nombre para la liga.');
+    return;
+  }
+
+  setCargando(true);
+  try {
+    // 1. Comprobar si ya existe una liga con este mismo nombre
+    const { data: ligaExistente } = await supabase
+      .from('leagues')
+      .select('id')
+      .eq('owner_id', user.id)
+      .eq('name', newLeagueName.trim())
+      .maybeSingle();
+
+    if (ligaExistente) {
+      alert(`¡Ya tienes una liga llamada "${newLeagueName.trim()}"! Elige otro nombre.`);
+      setCargando(false);
       return;
     }
-    setCargando(true);
-    try {
-      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const { data, error } = await supabase
-        .from('leagues')
-        .insert([{ name: newLeagueName, owner_id: user.id, invite_code: inviteCode }])
-        .select('id, name, invite_code')
-        .single();
 
-      if (error) throw error;
+    // 2. Crear la liga en la tabla 'leagues'
+    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { data: nuevaLiga, error: errorLiga } = await supabase
+      .from('leagues')
+      .insert([{ name: newLeagueName.trim(), owner_id: user.id, invite_code: inviteCode }])
+      .select()
+      .single();
 
-      const newLeague = data as League;
-      setCurrentLeagueId(newLeague.id);
-      setCurrentLeague(newLeague);
-      localStorage.setItem('currentLeagueId', newLeague.id);
-      setShowLeagueSelectionModal(false);
-      await cargarDatos(newLeague.id, newLeague);
-      alert('Liga "' + newLeague.name + '" creada con código de invitación: ' + newLeague.invite_code);
-    } catch (error: any) {
-      console.error('Error creating league:', error.message);
-      alert('Error al crear la liga: ' + error.message);
-    } finally {
-      setCargando(false);
+    if (errorLiga || !nuevaLiga) throw errorLiga;
+
+    // 3. 💵 INICIALIZAR EL PRESUPUESTO ASOCIADO A ESTA LIGA CONCRETA
+    const { error: errorPlantilla } = await supabase
+      .from('mis_plantillas')
+      .insert([{
+        user_id: user.id,
+        liga_id: nuevaLiga.id, // 👈 Vinculamos el dinero a esta liga específica usando la nueva columna
+        presupuesto: 100000000, // 100 Millones iniciales
+        puntos: 0,
+        jornada_actual: 1
+      }]);
+
+    if (errorPlantilla) {
+      console.error("Error al crear la plantilla inicial:", errorPlantilla);
     }
-  };
 
-  const handleJoinLeague = async () => {
-    if (!user?.id || !joinLeagueCode.trim()) {
-      alert('Por favor, introduce un código de invitación.');
+    // 4. Cambiar estados para entrar a jugar
+    setCurrentLeagueId(nuevaLiga.id);
+    localStorage.setItem('currentLeagueId', nuevaLiga.id);
+    setShowLeagueSelectionModal(false);
+    setNewLeagueName('');
+    
+    alert(`Liga "${nuevaLiga.name}" creada con éxito.`);
+
+  } catch (error: any) {
+    console.error("Error crítico al crear la liga:", error);
+    alert("Hubo un error al crear la liga.");
+  } finally {
+    setCargando(false);
+  }
+};
+ const handleJoinLeague = async (nombreABuscar: string) => {
+    if (!user || !nombreABuscar.trim()) {
+      alert("Por favor, introduce el nombre de la liga.");
       return;
     }
-    setCargando(true);
+
     try {
-      const { data: leagueData, error: leagueError } = await supabase
+      // 1. 🔍 Vamos a Supabase a buscar la liga que se llame exactamente como ha escrito el usuario
+      const { data: ligaEncontrada, error } = await supabase
         .from('leagues')
-        .select('id, name, invite_code')
-        .eq('invite_code', joinLeagueCode.trim())
-        .maybeSingle();
+        .select('id, name')
+        .eq('name', nombreABuscar.trim())
+        .maybeSingle(); // Trae una sola liga que coincida
 
-      if (leagueError) throw leagueError;
-      if (!leagueData) throw new Error('Código de invitación inválido o liga no encontrada.');
+      if (error || !ligaEncontrada) {
+        alert(`No se ha encontrado ninguna liga con el nombre "${nombreABuscar}". Revisa si está bien escrito.`);
+        return;
+      }
 
-      setCurrentLeagueId(leagueData.id);
-      setCurrentLeague(leagueData as League);
-      localStorage.setItem('currentLeagueId', leagueData.id);
+      // 2. 🎯 Si la encuentra, guardamos SU ID en el estado del juego para cargar sus datos
+      setCurrentLeagueId(ligaEncontrada.id);
+      localStorage.setItem('currentLeagueId', ligaEncontrada.id);
+      
+      // 3. Cerramos el modal para entrar al Dashboard de esa liga específica
       setShowLeagueSelectionModal(false);
-      await cargarDatos(leagueData.id, leagueData as League);
-      alert('Te has unido a la liga "' + leagueData.name + '".');
-    } catch (error: any) {
-      console.error('Error joining league:', error.message);
-      alert('Error al unirse a la liga: ' + error.message);
-    } finally {
-      setCargando(false);
+      
+      alert(`¡Te has unido con éxito a la liga: ${ligaEncontrada.name}!`);
+
+    } catch (error) {
+      console.error("Error al intentar unirse a la liga:", error);
     }
   };
 
@@ -1208,31 +1396,45 @@ export default function App() {
     }
 
     try {
-      setFichando(true);
-      console.log("Fichando:", jugador.nombre, "en Liga:", currentLeagueId);
-      
-      const { error } = await supabase
-        .from('mis_plantillas')
-        .insert([
-          {
-            user_id: user.id,
-            jugador_id: jugador.id,
-            es_titular: false,
-            liga_id: currentLeagueId,
-          },
-        ]);
+    setFichando(true);
+    console.log("Fichando:", jugador.nombre, "en Liga:", currentLeagueId);
 
-      if (error) {
-        // Manejo del error de duplicado (Unique Constraint en SQL)
-        if (error.code === '23505') {
-          alert('¡Error! Otro entrenador acaba de fichar a ' + jugador.nombre + ' justo ahora.');
-          setJugadorSeleccionado(null);
-          cargarDatos(currentLeagueId); // Recargamos para actualizar el mercado
-          return;
-        }
-        throw error;
+    // 1️⃣ PASO 1: Guardamos al jugador en la tabla que registra los fichajes de los usuarios
+    // Cambia 'jugadores_comprados' por el nombre exacto de la tabla de tu equipo si se llama distinto
+    const { error } = await supabase
+      .from('jugadores_comprados') 
+      .insert([
+        {
+          user_id: user.id,
+          jugador_id: jugador.id,
+          es_titular: false,
+          liga_id: currentLeagueId, // 👈 Esto ya lo tenías perfecto para independizar el jugador
+        },
+      ]);
+
+    if (error) {
+      if (error.code === '23505') {
+        alert('¡Error! Otro entrenador acaba de fichar a ' + jugador.nombre + ' justo ahora.');
+        setJugadorSeleccionado(null);
+        cargarDatos(currentLeagueId); 
+        return;
       }
+      throw error;
+    }
 
+    // 2️⃣ PASO 2: Restamos el coste del jugador del presupuesto de ESTA liga en 'mis_plantillas'
+    const { error: errorDinero } = await supabase
+      .from('mis_plantillas')
+      .update({ presupuesto: presupuesto - precioFinal }) // Le restamos el precio al dinero actual
+      .eq('user_id', user.id)
+      .eq('liga_id', currentLeagueId); // 👈 Filtro clave para que solo reste dinero en la liga actual
+
+    if (errorDinero) {
+      console.error("Error al descontar el dinero del presupuesto:", errorDinero);
+    } else {
+      // Si el dinero se resta bien, refrescamos los datos en pantalla
+      cargarDatos(currentLeagueId);
+    }
       setEstadoLigaBots((prev) =>
         prev.map((bot) => ({
           ...bot,
@@ -1345,7 +1547,60 @@ export default function App() {
               Crea una nueva o únete a una existente
             </p>
           </div>
-          <div className="p-8 space-y-6">
+          {/* EL ENCABEZADO AZUL TERMINA EN LA LÍNEA 16. PEGA ESTO JUSTO DEBAJO: */}
+      {comprobandoLiga ? (
+        <div className="p-8 text-center text-gray-500 font-bold animate-pulse">
+          Comprobando tus ligas en el estadio...
+        </div>
+      ) : usuarioTieneLiga ? (
+        /* 🌟 SI YA TIENE LIGA: Quitamos los inputs y ponemos acceso directo */
+        <div className="p-6">
+  {/* 📋 LISTA DE TUS LIGAS ACTIVAS */}
+  <div className="mb-6">
+    <p className="text-sm font-semibold text-gray-400 mb-2 text-left">Tus ligas en curso:</p>
+    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+      {ligasDetectadas.map((liga) => (
+        <button
+          key={liga.id}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl flex justify-between items-center transition-all shadow-md active:scale-[0.98]"
+          onClick={() => {
+            setCurrentLeagueId(liga.id);
+            localStorage.setItem('currentLeagueId', liga.id);
+            setShowLeagueSelectionModal(false); // Te mete directo a la liga seleccionada
+          }}
+        >
+          <span>{liga.name}</span>
+          <span className="text-xs bg-blue-500 px-2 py-1 rounded-md">Entrar ➔</span>
+        </button>
+      ))}
+    </div>
+  </div>
+
+  {/* ➕ SECCIÓN PARA CREAR UNA NUEVA LIGA */}
+  <div className="border-t border-gray-700 pt-4 mt-2">
+    <p className="text-sm font-semibold text-gray-400 mb-2 text-left">¿Quieres empezar otra?</p>
+    <input
+      type="text"
+      placeholder="Nombre de la nueva liga..."
+      value={newLeagueName}
+      onChange={(e) => setNewLeagueName(e.target.value)}
+      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 mb-3 focus:outline-none focus:border-blue-500"
+    />
+    <button
+      onClick={handleCreateLeague}
+      disabled={cargando}
+      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md disabled:opacity-50"
+    >
+      {cargando ? 'Creando...' : '➕ Crear Nueva Liga'}
+    </button>
+  </div>
+</div>
+
+      ) : (
+        <div className="p-8 grid grid-cols-2 gap-4">
+     
+      
+
             <div>
               <h4 className="text-xl font-bold mb-3 flex items-center gap-2">
                 <Plus size={20} /> Crear Nueva Liga
@@ -1382,13 +1637,15 @@ export default function App() {
                 className="w-full bg-green-600 text-white py-3 rounded-xl font-black uppercase hover:bg-green-700 transition-all disabled:opacity-50"
               >
                 Unirse a Liga
-              </button>
-            </div>
+            </button>
           </div>
-        </motion.div>
-      </div>
-    );
-  }
+        </div>
+
+      )} {/* 👈 ESTE ES EL CIERRE MÁGICO QUE TE FALTABA */}
+      </motion.div>
+    </div>
+  );
+}
 
   if (cargando)
     return (
@@ -1807,9 +2064,16 @@ export default function App() {
               <h1 className="text-5xl font-black italic tracking-tighter leading-none uppercase">Fantasy TFG</h1>
               {currentLeague && (
                 <div className="flex flex-col gap-1 mt-2">
-                  <p className="text-yellow-400 font-black text-xs uppercase tracking-[0.2em]">
+                  <div className="flex items-center gap-2">
+                    <p className="text-yellow-400 font-black text-xs uppercase tracking-[0.2em]">
                     Liga: {currentLeague.name}
                   </p>
+                    {user?.email && (
+                      <span className="text-[10px] text-blue-200 font-bold uppercase tracking-widest">
+                        | Entrenador: {user.email}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-black/20 px-3 py-1 rounded-lg border border-white/10 group">
                       <span className="text-[10px] font-mono font-bold text-blue-100 uppercase">CÓDIGO: {currentLeague.invite_code}</span>
