@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Plus, LogIn } from 'lucide-react';
+import { Plus, LogIn, Trash2 } from 'lucide-react';
 
 interface Props {
   comprobandoLiga: boolean;
@@ -15,12 +15,13 @@ interface Props {
   onCreateLeague: () => void;
   onJoinLeague: (code: string) => void;
   onSelectLeague: (id: string) => void;
+  onDeleteLeague: (id: string, name: string) => void;
 }
 
 export default function LeagueSelectionModal({
   comprobandoLiga, usuarioTieneLiga, ligasDetectadas, cargando,
   newLeagueName, setNewLeagueName, joinLeagueCode, setJoinLeagueCode,
-  onCreateLeague, onJoinLeague, onSelectLeague,
+  onCreateLeague, onJoinLeague, onSelectLeague, onDeleteLeague,
 }: Props) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
@@ -38,11 +39,17 @@ export default function LeagueSelectionModal({
             <p className="text-sm font-semibold text-gray-400 mb-2">Tus ligas en curso:</p>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1 mb-6">
               {ligasDetectadas.map(liga => (
-                <button key={liga.id} onClick={() => onSelectLeague(liga.id)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl flex justify-between items-center transition-all shadow-md">
-                  <span>{liga.name}</span>
-                  <span className="text-xs bg-blue-500 px-2 py-1 rounded-md">Entrar ➔</span>
-                </button>
+                <div key={liga.id} className="flex items-center gap-2">
+                  <button onClick={() => onSelectLeague(liga.id)}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl flex justify-between items-center transition-all shadow-md">
+                    <span>{liga.name}</span>
+                    <span className="text-xs bg-blue-500 px-2 py-1 rounded-md">Entrar ➔</span>
+                  </button>
+                  <button onClick={() => onDeleteLeague(liga.id, liga.name)} title="Borrar liga"
+                    className="bg-red-500 hover:bg-red-600 text-white p-3 rounded-xl transition-all shadow-md shrink-0">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               ))}
             </div>
             <div className="border-t border-gray-200 pt-4">

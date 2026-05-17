@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { RotateCcw, Target, Share2, Copy } from 'lucide-react';
+import { RotateCcw, Target, Share2, Copy, List } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 import { Jugador, League, PartidoHistorial } from '@/app/fantasy';
 import { CALENDARIO } from '@/app/gameData';
@@ -24,6 +24,7 @@ interface Props {
   onSimularDia: () => void;
   onJugarJornada: () => void;
   onReiniciarLiga: () => void;
+  onSwitchLeague: () => void;
   onCopyCode: (code: string) => void;
   onCopyInviteLink: (code: string) => void;
 }
@@ -31,7 +32,7 @@ interface Props {
 export default function Header({
   currentLeague, user, poderActual, statsUsuario, presupuesto, puntosLigaUsuario,
   jornadaActual, diasHastaPartido, simulandoDia, misFichajes, historialPartidos,
-  onLogout, onSimularDia, onJugarJornada, onReiniciarLiga, onCopyCode, onCopyInviteLink,
+  onLogout, onSimularDia, onJugarJornada, onReiniciarLiga, onSwitchLeague, onCopyCode, onCopyInviteLink,
 }: Props) {
   return (
     <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-blue-900 text-white p-8 rounded-[2rem] mb-6 shadow-2xl border-b-8 border-black/20 relative overflow-hidden">
@@ -117,9 +118,14 @@ export default function Header({
               </div>
             </div>
           </div>
-          <button onClick={onLogout} className="bg-white/10 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black transition-all border border-white/10">
-            CERRAR SESION
-          </button>
+          <div className="flex flex-col gap-2">
+            <button onClick={onSwitchLeague} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black transition-all border border-white/10 flex items-center gap-1.5">
+              <List size={12} /> MIS LIGAS
+            </button>
+            <button onClick={onLogout} className="bg-white/10 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black transition-all border border-white/10">
+              CERRAR SESION
+            </button>
+          </div>
         </div>
         <div className="flex gap-4">
           <div className="bg-white/10 p-4 rounded-2xl border border-white/10 backdrop-blur-md text-center min-w-[130px]">

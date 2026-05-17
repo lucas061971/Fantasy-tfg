@@ -492,6 +492,34 @@ export default function App() {
     setShowLeagueSelectionModal(false);
   };
 
+  const handleDeleteLeague = async (leagueId: string, leagueName: string) => {
+    if (!user?.id) return;
+    if (!confirm(`¿Seguro que quieres borrar la liga "${leagueName}"? Se perderán todos los datos.`)) return;
+    try {
+      await Promise.all([
+        supabase.from('mis_plantillas').delete().eq('user_id', user.id).eq('liga_id', leagueId),
+        supabase.from('jugadores_comprados').delete().eq('user_id', user.id).eq('liga_id', leagueId),
+      ]);
+      await supabase.from('leagues').delete().eq('id', leagueId).eq('owner_id', user.id);
+      localStorage.removeItem(`progress_${leagueId}`);
+      setLigasDetectadas(prev => prev.filter(l => l.id !== leagueId));
+      if (currentLeagueId === leagueId) {
+        setCurrentLeagueId(null);
+        setCurrentLeague(null);
+        setEstadoLigaBots([]);
+        setMisFichajes([]);
+        setPresupuesto(100000000);
+        setJornadaActual(1);
+        setPuntosLigaUsuario(0);
+        setHistorialPartidos([]);
+        setNoticias([]);
+        localStorage.removeItem('currentLeagueId');
+      }
+      const remaining = ligasDetectadas.filter(l => l.id !== leagueId);
+      setUsuarioTieneLiga(remaining.length > 0);
+    } catch { alert('Error al borrar la liga.'); }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null); setCurrentLeagueId(null); setCurrentLeague(null);
@@ -834,6 +862,7 @@ export default function App() {
         onCreateLeague={handleCreateLeague}
         onJoinLeague={handleJoinLeague}
         onSelectLeague={handleSelectLeague}
+        onDeleteLeague={handleDeleteLeague}
       />
     );
   }
@@ -911,6 +940,7 @@ export default function App() {
         onSimularDia={simularDia}
         onJugarJornada={jugarJornada}
         onReiniciarLiga={reiniciarLiga}
+        onSwitchLeague={() => setShowLeagueSelectionModal(true)}
         onCopyCode={code => copyToClipboard(code, '¡Código copiado!')}
         onCopyInviteLink={copyInviteLink}
       />
